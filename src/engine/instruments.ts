@@ -56,6 +56,34 @@ function pooled(make: () => Single, size: number): Voice {
   };
 }
 
+/**
+ * Polyphonic voices (chord, bell) don't need a pool: PolySynth hands each note its own
+ * voice, so overlapping hits are fine.
+ */
+function poly(make: () => Tone.PolySynth, apply: (s: Tone.PolySynth, p: SoundParams) => void, gate: Tone.Unit.Time): Voice {
+  const filter = new Tone.Filter(toneHz(1), 'lowpass');
+  const synth = make();
+  synth.maxPolyphony = 8;
+  synth.connect(filter);
+  let tune = 0;
+  return {
+    node: filter,
+    trigger(time, vel, notes) {
+      if (!notes.length) return;
+      synth.triggerAttackRelease(notes.map((n) => hz(n + tune)), gate, time, vel);
+    },
+    setParams(p) {
+      tune = p.tune;
+      filter.frequency.value = toneHz(p.tone);
+      apply(synth, p);
+    },
+    dispose() {
+      synth.dispose();
+      filter.dispose();
+    },
+  };
+}
+
 function sampler(source: SamplerSource): Voice {
   const filter = new Tone.Filter(toneHz(1), 'lowpass');
   let p = defaultParams();
@@ -141,6 +169,50 @@ export function createVoice(kind: TrackKind, source: SamplerSource): Voice {
           dispose: () => s.dispose(),
         };
       }, 3);
+    case 'lead':
+      return pooled(() => {
+        const s = new Tone.MonoSynth({
+          oscillator: { type: 'square' },
+          portamento: 0.02,
+          filter: { Q: 3, type: 'lowpass', rolloff: -12 },
+          envelope: { attack: 0.01, decay: 0.15, sustain: 0.5, release: 0.2 },
+          filterEnvelope: { attack: 0.01, decay: 0.2, sustain: 0.3, release: 0.2, baseFrequency: 500, octaves: 3 },
+        });
+        let tune = 0;
+        return {
+          node: s,
+          trigger: (t, v, notes) => s.triggerAttackRelease(hz((notes[0] ?? 60) + tune), '16n', t, v),
+          setParams: (p) => { tune = p.tune; s.envelope.decay = 0.15 * decayFactor(p.decay); },
+          dispose: () => s.dispose(),
+        };
+      }, 3);
+    case 'chord':
+      return poly(
+        () => {
+          const s = new Tone.PolySynth(Tone.Synth, {
+            oscillator: { type: 'sawtooth' },
+            envelope: { attack: 0.02, decay: 0.3, sustain: 0.4, release: 0.5 },
+          });
+          s.volume.value = -8; // three or four saws add up fast
+          return s;
+        },
+        (s, p) => s.set({ envelope: { decay: 0.3 * decayFactor(p.decay), release: 0.5 * decayFactor(p.decay) } }),
+        '8n',
+      );
+    case 'bell':
+      return poly(
+        () =>
+          new Tone.PolySynth(Tone.FMSynth, {
+            harmonicity: 3.01,
+            modulationIndex: 14,
+            oscillator: { type: 'sine' },
+            envelope: { attack: 0.002, decay: 0.8, sustain: 0, release: 1.2 },
+            modulation: { type: 'square' },
+            modulationEnvelope: { attack: 0.002, decay: 0.2, sustain: 0, release: 0.2 },
+          }),
+        (s, p) => s.set({ envelope: { decay: 0.8 * decayFactor(p.decay), release: 1.2 * decayFactor(p.decay) } }),
+        '16n',
+      );
     case 'sampler':
       return sampler(source);
   }

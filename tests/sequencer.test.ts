@@ -28,7 +28,7 @@ describe('triggersAt', () => {
   it('solo wins over mute state of other tracks', () => {
     const p = defaultProject();
     p.tracks[2].solo = true;
-    expect(audibleTracks(p)).toEqual([false, false, true, false, false]);
+    expect(audibleTracks(p)).toEqual([false, false, true, false, false, false, false, false]);
     expect(triggersAt(p, 0, 0).every((x) => x.track === 2)).toBe(true);
   });
 
@@ -118,5 +118,41 @@ describe('triggersAt carries step properties', () => {
     const p = defaultProject();
     Object.assign(p.patterns[0].steps[0][0], { prob: 0.4, ratchet: 3, nudge: -0.1 });
     expect(triggersAt(p, 0, 0).find((t) => t.track === 0)).toMatchObject({ prob: 0.4, ratchet: 3, nudge: -0.1 });
+  });
+});
+
+import { arpNote } from '../src/engine/sequencer';
+
+describe('arpNote', () => {
+  const chord = [60, 64, 67];
+  const run = (mode: Parameters<typeof arpNote>[1], n = 8) => Array.from({ length: n }, (_, i) => arpNote(chord, mode, i, () => 0));
+  it('up cycles low to high', () => expect(run('up', 7)).toEqual([60, 64, 67, 60, 64, 67, 60]));
+  it('down cycles high to low', () => expect(run('down', 4)).toEqual([67, 64, 60, 67]));
+  it('updown bounces without repeating the ends', () => expect(run('updown', 8)).toEqual([60, 64, 67, 64, 60, 64, 67, 64]));
+  it('random picks through the rng', () => {
+    expect(arpNote(chord, 'random', 0, () => 0)).toBe(60);
+    expect(arpNote(chord, 'random', 0, () => 0.99)).toBe(67);
+  });
+  it('plays a single note as it is', () => expect(arpNote([50], 'updown', 3)).toBe(50));
+  it('handles two notes in updown', () => {
+    expect([0, 1, 2, 3].map((i) => arpNote([60, 67], 'updown', i))).toEqual([60, 67, 60, 67]);
+  });
+});
+
+describe('expandHits with an arpeggiator', () => {
+  const chordTrig = (over: Partial<Trigger> = {}): Trigger => ({ track: 5, notes: [60, 64, 67], vel: 1, prob: 1, ratchet: 1, nudge: 0, ...over });
+  it('plays one chord note per step, advancing with the step index', () => {
+    const notesAt = (stepIndex: number) => expandHits(chordTrig(), STEP, () => 0, { mode: 'up', stepIndex })[0].notes;
+    expect([0, 1, 2, 3].map(notesAt)).toEqual([[60], [64], [67], [60]]);
+  });
+  it('a ratchet runs the arp faster inside the step', () => {
+    const hits = expandHits(chordTrig({ ratchet: 2 }), STEP, () => 0, { mode: 'up', stepIndex: 1 });
+    expect(hits.map((h) => h.notes[0])).toEqual([67, 60]); // sub-steps 2 and 3
+  });
+  it('leaves the full chord alone when the arp is off', () => {
+    expect(expandHits(chordTrig(), STEP, () => 0, { mode: 'off', stepIndex: 0 })[0].notes).toEqual([60, 64, 67]);
+  });
+  it('does nothing to a single-note step', () => {
+    expect(expandHits(chordTrig({ notes: [60] }), STEP, () => 0, { mode: 'up', stepIndex: 2 })[0].notes).toEqual([60]);
   });
 });

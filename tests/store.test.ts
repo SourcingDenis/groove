@@ -61,8 +61,8 @@ describe('Store', () => {
 describe('Store: sound, sampler, song', () => {
   it('places the chosen slice when a sampler step is switched on', () => {
     const s = new Store();
-    s.toggleStep(4, 2, 5);
-    expect(s.get().patterns[0].steps[4][2]).toMatchObject({ on: true, notes: [5] });
+    s.toggleStep(7, 2, 5);
+    expect(s.get().patterns[0].steps[7][2]).toMatchObject({ on: true, notes: [5] });
   });
 
   it('edits params and mix without undo entries', () => {
@@ -163,5 +163,38 @@ describe('noteName', () => {
     expect(noteName(60)).toBe('C4');
     expect(noteName(36)).toBe('C2');
     expect(noteName(70)).toBe('A#4');
+  });
+});
+
+import { chordNotes } from '../src/notes';
+import { defaultProject } from '../src/model';
+
+describe('instruments', () => {
+  it('ships eight tracks and a pattern row for each', () => {
+    const p = defaultProject();
+    expect(p.tracks.map((t) => t.kind)).toEqual(['kick', 'snare', 'hat', 'bass', 'lead', 'chord', 'bell', 'sampler']);
+    expect(p.patterns.every((pat) => pat.steps.length === 8)).toBe(true);
+  });
+
+  it('a new chord step gets a triad, a new lead step a single note', () => {
+    const s = new Store();
+    s.toggleStep(5, 3);
+    s.toggleStep(4, 3);
+    expect(s.get().patterns[0].steps[5][3].notes).toEqual([60, 64, 67]);
+    expect(s.get().patterns[0].steps[4][3].notes).toEqual([60]);
+  });
+
+  it('sets an arp mode with undo', () => {
+    const s = new Store();
+    s.setArp(5, 'updown');
+    expect(s.get().tracks[5].arp).toBe('updown');
+    s.undo();
+    expect(s.get().tracks[5].arp).toBe('off');
+  });
+
+  it('builds chords from a root', () => {
+    expect(chordNotes(60, 'maj')).toEqual([60, 64, 67]);
+    expect(chordNotes(57, 'm7')).toEqual([57, 60, 64, 67]);
+    expect(chordNotes(60, 'sus4')).toEqual([60, 65, 67]);
   });
 });

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { isBlackKey, noteName, pitchClassName } from '../notes';
+  import { CHORDS, chordNotes, isBlackKey, noteName, pitchClassName, type ChordType } from '../notes';
   import { isPoly, type Step, type Track } from '../model';
   import Slider from './Slider.svelte';
 
@@ -43,6 +43,13 @@
     if (next.length) onPreview(poly ? [midi] : next);
   }
 
+  function chord(type: ChordType) {
+    const root = step.notes[0] ?? base;
+    const notes = chordNotes(root, type);
+    onNotes(notes);
+    onPreview(notes);
+  }
+
   const pct = (v: number) => `${Math.round(v * 100)}%`;
   const nudgeFmt = (v: number) => `${v > 0 ? '+' : ''}${Math.round(v * 100)}%`;
 </script>
@@ -67,6 +74,15 @@
         <button class="key" class:black={isBlackKey(pc)} class:sel={has(base + pc)} onclick={() => press(pc)} aria-pressed={has(base + pc)}>
           {pitchClassName(pc)}
         </button>
+      {/each}
+    </div>
+  {/if}
+
+  {#if poly}
+    <div class="chords">
+      <span class="lbl">Акорд</span>
+      {#each Object.entries(CHORDS) as [id, c]}
+        <button onclick={() => chord(id as ChordType)}>{c.label}</button>
       {/each}
     </div>
   {/if}
@@ -102,7 +118,10 @@
   .keys { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; }
   .key { min-width: 0; padding: 0; min-height: 48px; }
   .key.black { background: #0d0d10; }
-  .sel { background: var(--hit); color: #000; border-color: var(--hit); }
+  .sel, .key.black.sel { background: var(--hit); color: #000; border-color: var(--hit); }
+  .chords { display: flex; align-items: center; gap: 4px; }
+  .chords .lbl { flex: 1; font-size: 14px; color: var(--dim); }
+  .chords button { padding: 0 8px; }
   .rat { display: flex; align-items: center; gap: 6px; min-height: 44px; }
   .rat .lbl { flex: 1; font-size: 14px; color: var(--dim); }
   .clear { margin-top: 4px; }

@@ -1,4 +1,4 @@
-import { DEFAULT_NOTES, defaultProject, emptyPattern, emptyStep, type Project, type SoundParams, type Step } from '../model';
+import { type ArpMode, DEFAULT_NOTES, defaultProject, emptyPattern, emptyStep, type Project, type SoundParams, type Step } from '../model';
 
 type Listener = (p: Project) => void;
 const HISTORY_LIMIT = 100;
@@ -165,6 +165,10 @@ export class Store {
 
   setMix(track: number, key: 'vol' | 'pan' | 'sendA' | 'sendB', value: number) {
     this.edit((p) => { p.tracks[track][key] = value; }, false);
+  }
+
+  setArp(track: number, mode: ArpMode) {
+    this.edit((p) => { p.tracks[track].arp = mode; });
   }
 
   setSample(track: number, id: string | null, name: string) {

@@ -305,7 +305,8 @@ export class Engine {
     const stepSeconds = 60 / project.bpm / 4;
     const floor = this.transport.context.currentTime + 0.002; // a rushed hit can't land in the past
     for (const trig of triggersAt(project, pattern, heard)) {
-      for (const h of expandHits(trig, stepSeconds)) {
+      const arp = { mode: project.tracks[trig.track].arp, stepIndex: heard };
+      for (const h of expandHits(trig, stepSeconds, Math.random, arp)) {
         this.voices[trig.track]?.trigger(Math.max(time + h.offset, floor), h.vel, h.notes);
       }
     }

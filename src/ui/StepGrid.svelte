@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import { noteName } from '../notes';
   import type { Step, Track } from '../model';
 
@@ -14,6 +15,19 @@
   let { tracks, steps, playhead, onToggle, onEdit, onMute, onSolo }: Props = $props();
 
   const LONG_PRESS_MS = 350;
+
+  // Phones show one track at a time (8 rows won't fit); wide screens show them all.
+  let narrow = $state(false);
+  let sel = $state(0);
+  onMount(() => {
+    const mq = matchMedia('(max-width: 759px)');
+    narrow = mq.matches;
+    const on = () => (narrow = mq.matches);
+    mq.addEventListener('change', on);
+    return () => mq.removeEventListener('change', on);
+  });
+  const visible = $derived(narrow ? [Math.min(sel, tracks.length - 1)] : tracks.map((_, i) => i));
+  const hasNotes = (t: number) => steps[t].some((x) => x.on);
 
   /**
    * One gesture on the grid:
@@ -93,7 +107,17 @@
 <svelte:window onpointerup={end} onpointercancel={cancel} />
 
 <section class="grid">
-  {#each tracks as track, t}
+  {#if narrow}
+    <div class="chips" role="tablist" aria-label="Трек">
+      {#each tracks as track, t}
+        <button role="tab" class="chip" class:sel={t === visible[0]} aria-selected={t === visible[0]} onclick={() => (sel = t)}>
+          {track.name}{#if hasNotes(t)}<i class="dot" aria-label="є кроки"></i>{/if}
+        </button>
+      {/each}
+    </div>
+  {/if}
+  {#each visible as t (t)}
+    {@const track = tracks[t]}
     <div class="row">
       <div class="head">
         <span class="label">{track.name}</span>
@@ -133,6 +157,10 @@
   .m, .s { min-width: 44px; font-size: 14px; }
   .m.active { background: #5a2323; border-color: #a33; }
   .s.active { background: var(--accent); color: #000; border-color: var(--accent); }
+  .chips { display: grid; grid-template-columns: repeat(4, 1fr); gap: 2px; }
+  .chip { position: relative; min-width: 0; padding: 0 2px; font-size: 14px; }
+  .chip.sel { background: var(--hit); color: #000; border-color: var(--hit); }
+  .dot { position: absolute; top: 5px; right: 5px; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
   .hint { margin: 0; padding: 0 4px 2px; font-size: 13px; color: var(--dim); }
   /* 2 rows of 8 on phones, one row of 16 on wide screens */
   .cells { display: grid; grid-template-columns: repeat(8, 1fr); gap: 2px; touch-action: none; }

@@ -1,4 +1,4 @@
-import type { Project, SongEntry } from '../model';
+import type { ArpMode, Project, SongEntry } from '../model';
 
 export interface Trigger {
   track: number;
@@ -20,19 +20,38 @@ const clamp = (x: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, x
 /** each ratchet hit is a little quieter than the last */
 export const RATCHET_DECAY = 0.85;
 
+/** Which of `notes` (sorted ascending) the arpeggiator plays at sub-step `i`. */
+export function arpNote(notes: number[], mode: ArpMode, i: number, rng: () => number = Math.random): number {
+  const n = notes.length;
+  if (n <= 1 || mode === 'off') return notes[0];
+  if (mode === 'random') return notes[Math.min(n - 1, Math.floor(rng() * n))];
+  const cycle = mode === 'updown' ? 2 * n - 2 : n;
+  const k = ((i % cycle) + cycle) % cycle;
+  if (mode === 'up') return notes[k];
+  if (mode === 'down') return notes[n - 1 - k];
+  return notes[k < n ? k : cycle - k]; // updown: 0..n-1, then back down to 1
+}
+
+export interface ArpOptions {
+  mode: ArpMode;
+  /** step position in the pattern; the arp advances one note per hit, so it runs across steps */
+  stepIndex: number;
+}
+
 /**
  * Turns one triggered step into the hits that should sound: applies the probability roll,
  * splits the step into `ratchet` equal sub-hits and shifts everything by `nudge`.
  * `rng` returns [0, 1); pass a fixed one in tests.
  */
-export function expandHits(t: Trigger, stepSeconds: number, rng: () => number = Math.random): Hit[] {
+export function expandHits(t: Trigger, stepSeconds: number, rng: () => number = Math.random, arp?: ArpOptions): Hit[] {
   if (rng() >= clamp(t.prob, 0, 1)) return [];
   const n = clamp(Math.round(t.ratchet), 1, 4);
   const nudge = clamp(t.nudge, -0.5, 0.5) * stepSeconds;
+  const arpeggiate = !!arp && arp.mode !== 'off' && t.notes.length > 1;
   return Array.from({ length: n }, (_, k) => ({
     offset: nudge + (k * stepSeconds) / n,
     vel: t.vel * Math.pow(RATCHET_DECAY, k),
-    notes: t.notes,
+    notes: arpeggiate ? [arpNote(t.notes, arp!.mode, arp!.stepIndex * n + k, rng)] : t.notes,
   }));
 }
 
