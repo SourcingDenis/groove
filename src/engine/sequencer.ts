@@ -1,4 +1,4 @@
-import type { Project } from '../model';
+import type { Project, SongEntry } from '../model';
 
 export interface Trigger {
   track: number;
@@ -32,4 +32,20 @@ export function triggersAt(project: Project, patternIndex: number, step: number)
  */
 export function resolvePattern(current: number, queued: number | null, step: number): number {
   return step === 0 && queued !== null ? queued : current;
+}
+
+/** Next position in the song chain after finishing one pass of the current entry. Wraps to the start. */
+export function advanceSong(song: SongEntry[], idx: number, rep: number): { idx: number; rep: number } {
+  if (song.length === 0) return { idx: 0, rep: 0 };
+  const entry = song[idx];
+  if (entry && rep + 1 < Math.max(1, entry.repeats)) return { idx, rep: rep + 1 };
+  return { idx: (idx + 1) % song.length, rep: 0 };
+}
+
+/** Total length of one run through the song, in steps. */
+export function songSteps(project: Project): number {
+  return project.song.reduce((sum, e) => {
+    const len = project.patterns[e.pattern]?.length ?? 0;
+    return sum + len * Math.max(1, e.repeats);
+  }, 0);
 }

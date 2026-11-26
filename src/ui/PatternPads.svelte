@@ -6,11 +6,12 @@
     playingPattern: number;
     queued: number | null;
     onPick: (i: number) => void;
-    onCopy: () => void;
-    onPaste: () => void;
-    onClear: () => void;
+    onCopy?: () => void;
+    onPaste?: () => void;
+    onClear?: () => void;
+    tools?: boolean;
   }
-  let { patterns, current, playingPattern, queued, onPick, onCopy, onPaste, onClear }: Props = $props();
+  let { patterns, current, playingPattern, queued, onPick, onCopy, onPaste, onClear, tools = true }: Props = $props();
 
   const hasNotes = (p: Pattern) => p.steps.some((row) => row.some((s) => s.on));
 </script>
@@ -31,11 +32,13 @@
       </button>
     {/each}
   </div>
-  <div class="tools">
-    <button onclick={onCopy}>Копія</button>
-    <button onclick={onPaste}>Вставити</button>
-    <button onclick={onClear}>Очистити</button>
-  </div>
+  {#if tools}
+    <div class="tools">
+      <button onclick={onCopy}>Копія</button>
+      <button onclick={onPaste}>Вставити</button>
+      <button onclick={onClear}>Очистити</button>
+    </div>
+  {/if}
 </section>
 
 <style>
@@ -51,4 +54,9 @@
   .live { border-color: var(--accent); box-shadow: inset 0 -3px 0 var(--accent); }
   .next { border-color: var(--accent); border-style: dashed; }
   .tools { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  /* 8 pads can't be 44px wide below ~385px: go 4 x 4 */
+  @media (max-width: 384px) {
+    .pads { grid-template-columns: repeat(4, 1fr); }
+    .pad { min-height: 48px; }
+  }
 </style>

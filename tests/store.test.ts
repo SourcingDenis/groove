@@ -57,3 +57,45 @@ describe('Store', () => {
     expect(snap.patterns[0].steps[0][1].on).toBe(false);
   });
 });
+
+describe('Store: sound, sampler, song', () => {
+  it('places the chosen slice when a sampler step is switched on', () => {
+    const s = new Store();
+    s.toggleStep(4, 2, 5);
+    expect(s.get().patterns[0].steps[4][2]).toMatchObject({ on: true, notes: [5] });
+  });
+
+  it('edits params and mix without undo entries', () => {
+    const s = new Store();
+    s.setParam(0, 'tune', 3);
+    s.setMix(1, 'sendB', 0.7);
+    expect(s.get().tracks[0].params.tune).toBe(3);
+    expect(s.get().tracks[1].sendB).toBe(0.7);
+    expect(s.canUndo).toBe(false);
+  });
+
+  it('builds, reorders and clears a song', () => {
+    const s = new Store();
+    s.songAdd(0); s.songAdd(2); s.songRepeats(1, 4);
+    s.songMove(1, -1);
+    expect(s.get().song).toEqual([{ pattern: 2, repeats: 4 }, { pattern: 0, repeats: 1 }]);
+    s.songMove(0, -1); // out of range: no-op
+    expect(s.get().song[0].pattern).toBe(2);
+    s.setSongMode(true);
+    expect(s.get().songMode).toBe(true);
+    s.songClear();
+    expect(s.get().song).toEqual([]);
+    expect(s.get().songMode).toBe(false);
+  });
+
+  it('refuses song mode with an empty song and clamps repeats', () => {
+    const s = new Store();
+    s.setSongMode(true);
+    expect(s.get().songMode).toBe(false);
+    s.songAdd(0);
+    s.songRepeats(0, 99);
+    expect(s.get().song[0].repeats).toBe(16);
+    s.songRepeats(0, 0);
+    expect(s.get().song[0].repeats).toBe(1);
+  });
+});

@@ -1,4 +1,4 @@
-import { defaultProject, emptyPattern, type Project, type Step } from '../model';
+import { defaultProject, emptyPattern, type Project, type SoundParams, type Step } from '../model';
 
 type Listener = (p: Project) => void;
 const HISTORY_LIMIT = 100;
@@ -67,11 +67,14 @@ export class Store {
     this.emit();
   }
 
-  toggleStep(track: number, step: number) {
+  /** `slice` is the sampler slice to place when switching a sampler step on. */
+  toggleStep(track: number, step: number, slice = 0) {
     this.edit((p) => {
       const s = p.patterns[p.current].steps[track][step];
       s.on = !s.on;
-      if (s.on && p.tracks[track].kind === 'bass' && s.notes.length === 0) s.notes = [36];
+      const kind = p.tracks[track].kind;
+      if (s.on && kind === 'bass' && s.notes.length === 0) s.notes = [36];
+      if (s.on && kind === 'sampler') s.notes = [slice];
     });
   }
 
@@ -114,5 +117,53 @@ export class Store {
     this.edit((p) => {
       p.patterns[p.current] = { ...structuredClone(clip), name: p.patterns[p.current].name };
     });
+  }
+
+  // --- sound / mixer: continuous controls, so no undo entry per drag tick ---
+
+  setParam(track: number, key: keyof SoundParams, value: number) {
+    this.edit((p) => { p.tracks[track].params[key] = value; }, false);
+  }
+
+  setMix(track: number, key: 'vol' | 'pan' | 'sendA' | 'sendB', value: number) {
+    this.edit((p) => { p.tracks[track][key] = value; }, false);
+  }
+
+  setSample(track: number, id: string | null, name: string) {
+    this.edit((p) => { p.tracks[track].sample = id; p.tracks[track].sampleName = name; });
+  }
+
+  setSlices(track: number, n: number) {
+    this.edit((p) => { p.tracks[track].slices = n; });
+  }
+
+  // --- song chain ---
+
+  songAdd(pattern: number) {
+    this.edit((p) => { p.song.push({ pattern, repeats: 1 }); });
+  }
+
+  songRemove(i: number) {
+    this.edit((p) => { p.song.splice(i, 1); });
+  }
+
+  songRepeats(i: number, repeats: number) {
+    this.edit((p) => { if (p.song[i]) p.song[i].repeats = Math.min(16, Math.max(1, repeats)); });
+  }
+
+  songMove(i: number, dir: -1 | 1) {
+    this.edit((p) => {
+      const j = i + dir;
+      if (j < 0 || j >= p.song.length) return;
+      [p.song[i], p.song[j]] = [p.song[j], p.song[i]];
+    });
+  }
+
+  songClear() {
+    this.edit((p) => { p.song = []; p.songMode = false; });
+  }
+
+  setSongMode(on: boolean) {
+    this.edit((p) => { p.songMode = on && p.song.length > 0; }, false);
   }
 }

@@ -41,7 +41,7 @@
 </section>
 
 <style>
-  .bar { display: flex; align-items: center; gap: 8px; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 8px; }
+  .bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; position: sticky; top: 0; z-index: 5; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 8px; }
   .play { width: 56px; min-height: 52px; font-size: 20px; }
   .play.on { background: var(--hit); color: #000; }
   .bpm { display: flex; align-items: center; gap: 4px; }

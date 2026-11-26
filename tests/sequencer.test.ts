@@ -28,7 +28,7 @@ describe('triggersAt', () => {
   it('solo wins over mute state of other tracks', () => {
     const p = defaultProject();
     p.tracks[2].solo = true;
-    expect(audibleTracks(p)).toEqual([false, false, true, false]);
+    expect(audibleTracks(p)).toEqual([false, false, true, false, false]);
     expect(triggersAt(p, 0, 0).every((x) => x.track === 2)).toBe(true);
   });
 
@@ -44,5 +44,32 @@ describe('resolvePattern', () => {
   });
   it('keeps the current pattern with nothing queued', () => {
     expect(resolvePattern(2, null, 0)).toBe(2);
+  });
+});
+
+import { advanceSong, songSteps } from '../src/engine/sequencer';
+
+describe('advanceSong', () => {
+  const song = [{ pattern: 0, repeats: 2 }, { pattern: 3, repeats: 1 }];
+  it('repeats an entry before moving on', () => {
+    expect(advanceSong(song, 0, 0)).toEqual({ idx: 0, rep: 1 });
+    expect(advanceSong(song, 0, 1)).toEqual({ idx: 1, rep: 0 });
+  });
+  it('wraps to the first entry', () => {
+    expect(advanceSong(song, 1, 0)).toEqual({ idx: 0, rep: 0 });
+  });
+  it('handles an empty song', () => {
+    expect(advanceSong([], 0, 0)).toEqual({ idx: 0, rep: 0 });
+  });
+  it('treats repeats below 1 as 1', () => {
+    expect(advanceSong([{ pattern: 0, repeats: 0 }, { pattern: 1, repeats: 1 }], 0, 0)).toEqual({ idx: 1, rep: 0 });
+  });
+});
+
+describe('songSteps', () => {
+  it('sums pattern length x repeats', () => {
+    const p = defaultProject();
+    p.song = [{ pattern: 0, repeats: 2 }, { pattern: 1, repeats: 3 }];
+    expect(songSteps(p)).toBe(16 * 2 + 16 * 3);
   });
 });

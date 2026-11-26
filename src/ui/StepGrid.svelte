@@ -48,7 +48,7 @@
             onpointerenter={() => enter(t, s)}
             aria-label={`${track.name} крок ${s + 1}`}
             aria-pressed={step.on}
-          ></button>
+          >{#if step.on && track.kind === 'sampler'}{(step.notes[0] ?? 0) + 1}{/if}</button>
         {/each}
       </div>
     </div>
@@ -70,5 +70,8 @@
   .cell.on { background: var(--hit); border-color: var(--hit); }
   .cell.play { outline: 2px solid var(--accent); outline-offset: -2px; }
   .cell.play.on { background: var(--accent); border-color: var(--accent); }
+  /* 8 cells can't be 44px wide below ~385px: go 4 x 4 */
+  @media (max-width: 384px) { .cells { grid-template-columns: repeat(4, 1fr); } }
   @media (min-width: 760px) { .cells { grid-template-columns: repeat(16, 1fr); } }
+  .cell { font-size: 13px; color: #000; font-weight: 600; }
 </style>
