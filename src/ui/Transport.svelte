@@ -11,6 +11,27 @@
   }
   let { playing, bpm, canUndo, canRedo, onToggle, onBpm, onUndo, onRedo }: Props = $props();
 
+  let editing = $state(false);
+  // a type=number input binds as a number once it holds a valid value, so accept both
+  let draft = $state<string | number>('');
+  let input: HTMLInputElement | undefined = $state();
+
+  function startEdit() {
+    draft = String(bpm);
+    editing = true;
+    queueMicrotask(() => { input?.focus(); input?.select(); });
+  }
+  function commit() {
+    if (!editing) return;
+    editing = false;
+    const n = parseFloat(String(draft).replace(',', '.'));
+    if (Number.isFinite(n)) onBpm(n);
+  }
+  function keydown(e: KeyboardEvent) {
+    if (e.key === 'Enter') commit();
+    else if (e.key === 'Escape') editing = false;
+  }
+
   // tap tempo: average of the last few taps, reset after a 2 s pause
   let taps: number[] = [];
   function tap() {
@@ -31,7 +52,11 @@
   </button>
   <div class="bpm">
     <button onclick={() => onBpm(bpm - 1)} aria-label="Повільніше">−</button>
-    <output aria-label="BPM">{bpm}</output>
+    {#if editing}
+      <input bind:this={input} bind:value={draft} class="bpm-in" type="number" inputmode="decimal" min="30" max="300" aria-label="BPM" onblur={commit} onkeydown={keydown} />
+    {:else}
+      <button class="bpm-num" onclick={startEdit} aria-label={`BPM ${bpm}, натисни щоб ввести`}>{bpm}</button>
+    {/if}
     <button onclick={() => onBpm(bpm + 1)} aria-label="Швидше">+</button>
   </div>
   <button onclick={tap}>Tap</button>
@@ -45,6 +70,7 @@
   .play { width: 56px; min-height: 52px; font-size: 20px; }
   .play.on { background: var(--hit); color: #000; }
   .bpm { display: flex; align-items: center; gap: 4px; }
-  output { min-width: 3ch; text-align: center; font-variant-numeric: tabular-nums; font-size: 18px; }
+  .bpm-num { min-width: 3.4em; font-size: 18px; font-variant-numeric: tabular-nums; background: transparent; border-color: transparent; }
+  .bpm-in { width: 4.6em; min-height: 44px; font: inherit; font-size: 18px; text-align: center; color: var(--text); background: var(--panel-2); border: 1px solid var(--accent); border-radius: 10px; user-select: text; -webkit-user-select: text; }
   .spacer { flex: 1; }
 </style>

@@ -100,3 +100,23 @@ export function songSteps(project: Project): number {
     return sum + len * Math.max(1, e.repeats);
   }, 0);
 }
+
+export interface DuckPoint {
+  time: number;
+  gain: number;
+}
+
+export const DUCK_ATTACK = 0.004;
+
+/**
+ * Gain automation for one kick: dive to `1 - amount` almost at once, then ramp back to 1
+ * over `release` seconds. Returns the two ramp targets after the kick's own time.
+ */
+export function duckPoints(time: number, amount: number, release: number): [DuckPoint, DuckPoint] {
+  const a = Math.min(1, Math.max(0, amount));
+  const r = Math.max(0.01, release);
+  return [
+    { time: time + DUCK_ATTACK, gain: 1 - a },
+    { time: time + DUCK_ATTACK + r, gain: 1 },
+  ];
+}

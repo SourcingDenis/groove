@@ -198,3 +198,29 @@ describe('instruments', () => {
     expect(chordNotes(60, 'sus4')).toEqual([60, 65, 67]);
   });
 });
+
+describe('Store: sidechain, swing', () => {
+  it('ships ducking on bass and chord, none on kick', () => {
+    const t = new Store().get().tracks;
+    expect(t.map((x) => [x.kind, x.duck])).toEqual([
+      ['kick', 0], ['snare', 0], ['hat', 0], ['bass', 0.5], ['lead', 0], ['chord', 0.6], ['bell', 0], ['sampler', 0],
+    ]);
+  });
+
+  it('sets and clamps duck, release and swing without undo entries', () => {
+    const s = new Store();
+    s.setDuck(3, 2);
+    expect(s.get().tracks[3].duck).toBe(1);
+    s.setDuck(3, -1);
+    expect(s.get().tracks[3].duck).toBe(0);
+    s.setDuckRelease(9);
+    expect(s.get().duckRelease).toBe(0.5);
+    s.setDuckRelease(0);
+    expect(s.get().duckRelease).toBe(0.05);
+    s.setSwing(1);
+    expect(s.get().swing).toBe(0.6);
+    s.setSwing(-1);
+    expect(s.get().swing).toBe(0);
+    expect(s.canUndo).toBe(false);
+  });
+});

@@ -46,6 +46,8 @@ export interface Track {
   preset: string;
   params: SoundParams;
   arp: ArpMode;
+  /** 0..1 how far a kick pulls this track down (sidechain ducking) */
+  duck: number;
   muted: boolean;
   solo: boolean;
   /** sampler only: id of a Blob in IndexedDB */
@@ -76,9 +78,12 @@ export interface Project {
   current: number;
   song: SongEntry[];
   songMode: boolean;
+  /** seconds for a ducked track to come back up after a kick */
+  duckRelease: number;
 }
 
 export const PROJECT_VERSION = 3;
+export const DUCK_RELEASE_DEFAULT = 0.18;
 export const PATTERN_COUNT = 16;
 export const STEPS = 16;
 export const BASS_DEFAULT_NOTE = 36; // C2
@@ -141,9 +146,9 @@ export function emptyPattern(name: string, trackCount: number, length = STEPS): 
   };
 }
 
-function track(name: string, kind: TrackKind, vol: number, sendA = 0, sendB = 0): Track {
+function track(name: string, kind: TrackKind, vol: number, sendA = 0, sendB = 0, duck = 0): Track {
   return {
-    name, kind, vol, pan: 0, sendA, sendB, preset: DEFAULT_PRESET[kind], params: defaultParams(), arp: 'off', muted: false, solo: false,
+    name, kind, vol, pan: 0, sendA, sendB, preset: DEFAULT_PRESET[kind], params: defaultParams(), arp: 'off', duck, muted: false, solo: false,
     sample: null, sampleName: '', slices: 8,
   };
 }
@@ -153,9 +158,9 @@ export function defaultProject(): Project {
     track('Kick', 'kick', -4),
     track('Snare', 'snare', -8, 0.1, 0.15),
     track('Hat', 'hat', -18, 0.15),
-    track('Bass', 'bass', -8),
+    track('Bass', 'bass', -8, 0, 0, 0.5),
     track('Lead', 'lead', -12, 0.15, 0.1),
-    track('Chord', 'chord', -14, 0, 0.3),
+    track('Chord', 'chord', -14, 0, 0.3, 0.6),
     track('Bell', 'bell', -16, 0.2, 0.3),
     track('Sample', 'sampler', -6, 0.1, 0.1),
   ];
@@ -168,5 +173,5 @@ export function defaultProject(): Project {
   for (const i of [0, 6, 10]) p.steps[3][i] = hit([BASS_DEFAULT_NOTE], 0.9);
   p.steps[5][0] = hit([57, 60, 64], 0.8); // Am
   p.steps[5][8] = hit([53, 57, 60], 0.8); // F
-  return { version: PROJECT_VERSION, bpm: 123, swing: 0, tracks, patterns, current: 0, song: [], songMode: false };
+  return { version: PROJECT_VERSION, bpm: 123, swing: 0, tracks, patterns, current: 0, song: [], songMode: false, duckRelease: DUCK_RELEASE_DEFAULT };
 }

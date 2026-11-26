@@ -18,11 +18,11 @@ Tabs: **Кроки · Звук · Мікшер · Жива · Пісня · Ще
 
 - **Кроки** — 16 patterns (copy / paste / clear; tap a pad while playing to queue it for the next bar), 8 tracks × 16 steps (phones show one track at a time, wide screens all of them), drag across steps to paint, mute / solo, spectrum strip. **Hold a step** to edit it: a one-octave key grid (chords on chord / bell tracks, with Maj / min / 7 / m7 / sus4 shortcuts), velocity, probability, nudge (micro-timing) and ratchet 1–4×
 - **Звук** — per-track macros (tune, length, brightness); instruments: kick, snare, hat, bass, **lead**, **chord** pad and **bell** (FM); chord and bell tracks have an **arpeggiator** (up / down / up-down / random) that plays one chord note per step; **presets** — drum kits 808 / 909 / Lo-fi (swap kick, snare and hat together), bass Saw / Sub / Reese / Pluck / Acid, lead, pad and bell variants, and your own saved sounds (stored in IndexedDB). Switching a preset while playing swaps just that instrument; the **sampler** loads a file or records from the microphone, slices it into 4 / 8 / 16 and places slices on steps
-- **Мікшер** — volume, pan, delay and reverb sends, live level meters
+- **Мікшер** — volume, pan, delay and reverb sends, **sidechain** (how far each kick pulls a track down, with a shared release), live level meters; a **master** card with **swing** and a **metronome** (the click goes straight to the speakers, so it never ends up in a recording or a render)
 - **Жива** — XY pad (filter / delay throw / reverb wash), hold-to-repeat 1/4 · 1/8 · 1/16, big mute / solo, visualiser
 - **Пісня** — chain patterns with repeats; "Пісня" mode plays the chain bar by bar
 - **Ще** — export: render the song to WAV faster than real time, or record a live set
-- Play / stop, BPM ±, tap tempo, undo / redo; project and samples autosave to IndexedDB; installable PWA with PNG icons
+- Play / stop, BPM ± or tap the number to type it, tap tempo, undo / redo; project and samples autosave to IndexedDB; installable PWA with PNG icons
 
 ## Layout
 
@@ -42,8 +42,10 @@ tests/                vitest
 - One transport callback per 16th note reads the live project and triggers every audible track. It never touches the DOM; the playhead is updated through `Tone.Draw`.
 - Tone's monophonic synths throw if retriggered while still ringing out, so each drum voice is a small rotating pool (`instruments.ts`). The hat is filtered noise because `MetalSynth` failed above ~200 BPM.
 - `Tone.Offline` restores the global context as soon as rendering starts, so anything created inside a transport callback (sampler sources) is given its context explicitly. `Project` goes through a JSON round-trip before rendering because Svelte `$state` proxies can't be `structuredClone`d.
+- Sidechain is gain automation on a per-track input gain, scheduled from the kick's own hit time, so it is sample-accurate and renders offline identically.
+- Chrome stops pulling an all-silent graph and MediaRecorder then never reports it started, so a silent mix couldn't be recorded; the recorder gets a -120 dB oscillator to keep the stream alive.
 - iOS: `Tone.start()` runs from the Play tap and `navigator.audioSession.type = 'playback'` keeps the silent switch from muting audio.
 
 ## Roadmap
 
-Sidechain ducking, swing, typed BPM and a metronome.
+Live recording of notes with quantisation, project export / import (JSON), a service worker for offline use, keyboard shortcuts, Web MIDI, longer patterns (32 / 64 steps), parameter automation.

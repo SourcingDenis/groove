@@ -34,7 +34,8 @@
     error = '';
     if (!recording) {
       try {
-        await engine.startRecording();
+        // never leave the button dead: if the browser is slow to confirm, carry on after 2 s
+        await Promise.race([engine.startRecording(), new Promise((r) => setTimeout(r, 2000))]);
         recording = true;
         status = 'Іде запис. Грай і міксуй — натисни «Стоп», коли закінчиш.';
       } catch {

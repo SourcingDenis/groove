@@ -4,7 +4,7 @@ import type { Store } from '../store/store';
 import { setupContext, unlock } from './context';
 import { createVoice, type Voice } from './instruments';
 import { getSample } from './samples';
-import { advanceSong, expandHits, resolvePattern, triggersAt } from './sequencer';
+import { advanceSong, duckPoints, expandHits, resolvePattern, triggersAt } from './sequencer';
 
 export interface PlayPosition {
   step: number;
@@ -46,6 +46,8 @@ export class Engine {
   private revReturn!: Tone.Filter;
   private reverb!: Tone.Reverb;
   private analyser?: Tone.Analyser;
+  /** metronome click: straight to the speakers, so it never reaches a recording or a render */
+  private click?: Tone.Synth;
   private recorder?: Tone.Recorder;
 
   private step = 0;
@@ -61,6 +63,7 @@ export class Engine {
 
   /** hits dropped because a voice threw on retrigger (should stay 0) */
   droppedHits = 0;
+  metronome = false;
 
   onPosition: (pos: PlayPosition) => void = () => {};
 
@@ -181,6 +184,19 @@ export class Engine {
     return this.recorder.stop();
   }
 
+  /** Sidechain: every kick pulls the ducked tracks down and lets them swell back. */
+  private duck(time: number, project: Project) {
+    project.tracks.forEach((t, i) => {
+      if (t.duck <= 0 || t.kind === 'kick') return;
+      const g = this.inputs[i]?.gain;
+      if (!g) return;
+      const [dip, back] = duckPoints(time, t.duck, project.duckRelease);
+      g.cancelAndHoldAtTime(time);
+      g.linearRampToValueAtTime(dip.gain, dip.time);
+      g.linearRampToValueAtTime(back.gain, back.time);
+    });
+  }
+
   private resetPosition(project: Project) {
     this.step = 0;
     this.first = true;
@@ -220,7 +236,17 @@ export class Engine {
 
     this.nodes.push(limiter, comp, master, dry, this.delay, this.reverb, this.revReturn,
       this.perfFilter, this.perfDelaySend, this.perfRevSend, this.analyser);
-    if (this.recorder) this.nodes.push(this.recorder);
+    if (this.recorder) {
+      // Chrome stops pulling a graph that is entirely silent, and then MediaRecorder never
+      // reports that it started: recording a silent mix would hang. A -120 dB oscillator
+      // (below one 16-bit step) keeps the stream alive without being audible.
+      const keepAlive = new Tone.Oscillator({ frequency: 40, volume: -120 }).connect(this.recorder).start();
+      this.nodes.push(this.recorder, keepAlive);
+    }
+    if (!this.offline) {
+      this.click = new Tone.Synth({ oscillator: { type: 'square' }, envelope: { attack: 0.001, decay: 0.03, sustain: 0, release: 0.01 }, volume: -14 }).toDestination();
+      this.nodes.push(this.click);
+    }
 
     this.voices = p.tracks.map((t, i) => this.makeVoice(i, t.kind, t.preset));
     this.voicePreset = p.tracks.map((t) => t.preset);
@@ -334,13 +360,19 @@ export class Engine {
       const arp = { mode: project.tracks[trig.track].arp, stepIndex: heard };
       for (const h of expandHits(trig, stepSeconds, Math.random, arp)) {
         try {
-          this.voices[trig.track]?.trigger(Math.max(time + h.offset, floor), h.vel, h.notes);
+          const at = Math.max(time + h.offset, floor);
+          this.voices[trig.track]?.trigger(at, h.vel, h.notes);
+          if (project.tracks[trig.track].kind === 'kick') this.duck(at, project);
         } catch (e) {
           // a voice refusing a retrigger must not take the whole transport down
           this.droppedHits++;
           console.warn('dropped hit', e);
         }
       }
+    }
+
+    if (this.metronome && this.click && step % 4 === 0) {
+      this.click.triggerAttackRelease(step === 0 ? 1600 : 1000, 0.02, time, 0.6);
     }
 
     if (!this.offline) {

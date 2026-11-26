@@ -156,3 +156,24 @@ describe('expandHits with an arpeggiator', () => {
     expect(expandHits(chordTrig({ notes: [60] }), STEP, () => 0, { mode: 'up', stepIndex: 2 })[0].notes).toEqual([60]);
   });
 });
+
+import { DUCK_ATTACK, duckPoints } from '../src/engine/sequencer';
+
+describe('duckPoints', () => {
+  it('dips almost immediately, then returns to full gain after the release', () => {
+    const [dip, back] = duckPoints(2, 0.6, 0.2);
+    expect(dip.time).toBeCloseTo(2 + DUCK_ATTACK);
+    expect(dip.gain).toBeCloseTo(0.4);
+    expect(back.time).toBeCloseTo(2 + DUCK_ATTACK + 0.2);
+    expect(back.gain).toBe(1);
+  });
+  it('amount 0 is a no-op dip and amount 1 is silence', () => {
+    expect(duckPoints(0, 0, 0.1)[0].gain).toBe(1);
+    expect(duckPoints(0, 1, 0.1)[0].gain).toBe(0);
+  });
+  it('clamps amount and keeps a positive release', () => {
+    expect(duckPoints(0, 5, 0.1)[0].gain).toBe(0);
+    expect(duckPoints(0, -1, 0.1)[0].gain).toBe(1);
+    expect(duckPoints(0, 0.5, 0)[1].time).toBeGreaterThan(duckPoints(0, 0.5, 0)[0].time);
+  });
+});

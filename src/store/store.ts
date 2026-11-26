@@ -206,6 +206,18 @@ export class Store {
     this.edit((p) => { p.tracks[track].arp = mode; });
   }
 
+  setDuck(track: number, amount: number) {
+    this.edit((p) => { p.tracks[track].duck = Math.min(1, Math.max(0, amount)); }, false);
+  }
+
+  setDuckRelease(seconds: number) {
+    this.edit((p) => { p.duckRelease = Math.min(0.5, Math.max(0.05, seconds)); }, false);
+  }
+
+  setSwing(amount: number) {
+    this.edit((p) => { p.swing = Math.min(0.6, Math.max(0, amount)); }, false);
+  }
+
   setSample(track: number, id: string | null, name: string) {
     this.edit((p) => { p.tracks[track].sample = id; p.tracks[track].sampleName = name; });
   }
