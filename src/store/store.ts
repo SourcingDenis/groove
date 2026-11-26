@@ -1,7 +1,9 @@
-import { defaultProject, emptyPattern, type Project, type SoundParams, type Step } from '../model';
+import { DEFAULT_NOTES, defaultProject, emptyPattern, emptyStep, type Project, type SoundParams, type Step } from '../model';
 
 type Listener = (p: Project) => void;
 const HISTORY_LIMIT = 100;
+/** Edits with the same key inside this window share one undo entry (slider drags). */
+const COALESCE_MS = 700;
 
 /** Single source of truth. Every edit is a command; each command is one undo step. */
 export class Store {
@@ -9,6 +11,10 @@ export class Store {
   private past: Project[] = [];
   private future: Project[] = [];
   private listeners = new Set<Listener>();
+  private lastKey = '';
+  private lastAt = 0;
+  /** last notes the user set per track, so a freshly switched-on step repeats them */
+  private lastNotes: Record<number, number[]> = {};
 
   constructor(initial: Project = defaultProject()) {
     this.project = initial;
@@ -32,13 +38,21 @@ export class Store {
   }
 
   /** Apply an edit to a copy; `record` false = no undo entry (e.g. live knob drags, pattern switching). */
-  private edit(fn: (draft: Project) => void, record = true) {
+  private edit(fn: (draft: Project) => void, record = true, key = '') {
     const next = structuredClone(this.project);
     fn(next);
     if (record) {
-      this.past.push(this.project);
-      if (this.past.length > HISTORY_LIMIT) this.past.shift();
+      const now = Date.now();
+      const coalesce = key !== '' && key === this.lastKey && now - this.lastAt < COALESCE_MS && this.past.length > 0;
+      if (!coalesce) {
+        this.past.push(this.project);
+        if (this.past.length > HISTORY_LIMIT) this.past.shift();
+      }
+      this.lastKey = key;
+      this.lastAt = now;
       this.future = [];
+    } else {
+      this.lastKey = '';
     }
     this.project = next;
     this.emit();
@@ -73,13 +87,37 @@ export class Store {
       const s = p.patterns[p.current].steps[track][step];
       s.on = !s.on;
       const kind = p.tracks[track].kind;
-      if (s.on && kind === 'bass' && s.notes.length === 0) s.notes = [36];
       if (s.on && kind === 'sampler') s.notes = [slice];
+      else if (s.on && s.notes.length === 0) s.notes = [...(this.lastNotes[track] ?? DEFAULT_NOTES[kind] ?? [])];
     });
   }
 
   setStep(track: number, step: number, patch: Partial<Step>) {
-    this.edit((p) => Object.assign(p.patterns[p.current].steps[track][step], patch));
+    this.edit(
+      (p) => Object.assign(p.patterns[p.current].steps[track][step], patch),
+      true,
+      `step:${this.project.current}:${track}:${step}:${Object.keys(patch).sort().join()}`,
+    );
+  }
+
+  /** Sets the notes of a step (and switches it on). */
+  setStepNotes(track: number, step: number, notes: number[]) {
+    const sorted = [...notes].sort((a, b) => a - b);
+    if (sorted.length) this.lastNotes[track] = sorted;
+    this.edit(
+      (p) => {
+        const s = p.patterns[p.current].steps[track][step];
+        s.notes = sorted;
+        s.on = true;
+      },
+      true,
+      `notes:${this.project.current}:${track}:${step}`,
+    );
+  }
+
+  /** Back to an empty, switched-off step. */
+  resetStep(track: number, step: number) {
+    this.edit((p) => { p.patterns[p.current].steps[track][step] = emptyStep(); });
   }
 
   setBpm(bpm: number) {

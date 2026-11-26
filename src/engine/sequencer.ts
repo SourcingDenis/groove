@@ -4,6 +4,36 @@ export interface Trigger {
   track: number;
   notes: number[];
   vel: number;
+  prob: number;
+  ratchet: number;
+  nudge: number;
+}
+
+/** One actual sound to start: `offset` seconds after the step's clock time. */
+export interface Hit {
+  offset: number;
+  vel: number;
+  notes: number[];
+}
+
+const clamp = (x: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, x));
+/** each ratchet hit is a little quieter than the last */
+export const RATCHET_DECAY = 0.85;
+
+/**
+ * Turns one triggered step into the hits that should sound: applies the probability roll,
+ * splits the step into `ratchet` equal sub-hits and shifts everything by `nudge`.
+ * `rng` returns [0, 1); pass a fixed one in tests.
+ */
+export function expandHits(t: Trigger, stepSeconds: number, rng: () => number = Math.random): Hit[] {
+  if (rng() >= clamp(t.prob, 0, 1)) return [];
+  const n = clamp(Math.round(t.ratchet), 1, 4);
+  const nudge = clamp(t.nudge, -0.5, 0.5) * stepSeconds;
+  return Array.from({ length: n }, (_, k) => ({
+    offset: nudge + (k * stepSeconds) / n,
+    vel: t.vel * Math.pow(RATCHET_DECAY, k),
+    notes: t.notes,
+  }));
 }
 
 /** Which tracks are audible given mute/solo state. */
@@ -21,7 +51,9 @@ export function triggersAt(project: Project, patternIndex: number, step: number)
   const out: Trigger[] = [];
   pattern.steps.forEach((row, track) => {
     const s = row[idx];
-    if (s?.on && audible[track]) out.push({ track, notes: s.notes, vel: s.vel });
+    if (s?.on && audible[track]) {
+      out.push({ track, notes: s.notes, vel: s.vel, prob: s.prob ?? 1, ratchet: s.ratchet ?? 1, nudge: s.nudge ?? 0 });
+    }
   });
   return out;
 }

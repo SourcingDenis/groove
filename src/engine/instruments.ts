@@ -101,7 +101,7 @@ export function createVoice(kind: TrackKind, source: SamplerSource): Voice {
           setParams: (p) => { tune = p.tune; s.envelope.decay = 0.3 * decayFactor(p.decay); },
           dispose: () => s.dispose(),
         };
-      }, 4);
+      }, 6);
     case 'snare':
       return pooled(() => {
         const s = new Tone.NoiseSynth({ noise: { type: 'white' }, envelope: { attack: 0.001, decay: 0.14, sustain: 0, release: 0.08 } });
@@ -111,7 +111,7 @@ export function createVoice(kind: TrackKind, source: SamplerSource): Voice {
           setParams: (p) => { s.envelope.decay = 0.14 * decayFactor(p.decay); },
           dispose: () => s.dispose(),
         };
-      }, 4);
+      }, 6);
     case 'hat':
       // Filtered noise instead of MetalSynth: MetalSynth throws on rapid retriggers above ~200 BPM.
       return pooled(() => {
@@ -124,7 +124,7 @@ export function createVoice(kind: TrackKind, source: SamplerSource): Voice {
           setParams: (p) => { n.envelope.decay = 0.05 * decayFactor(p.decay); },
           dispose: () => { n.dispose(); hp.dispose(); },
         };
-      }, 4);
+      }, 6);
     case 'bass':
       return pooled(() => {
         const s = new Tone.MonoSynth({

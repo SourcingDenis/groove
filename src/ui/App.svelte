@@ -10,6 +10,7 @@
   import PatternPads from './PatternPads.svelte';
   import SongPage from './SongPage.svelte';
   import SoundPage from './SoundPage.svelte';
+  import StepEditor from './StepEditor.svelte';
   import StepGrid from './StepGrid.svelte';
   import Tabs, { type TabId } from './Tabs.svelte';
   import Transport from './Transport.svelte';
@@ -28,6 +29,7 @@
   let soundTrack = $state(0);
   let activeSlice = $state(0);
   let sampleVersion = $state(0);
+  let editing = $state<{ track: number; step: number } | null>(null);
 
   store.subscribe((p) => {
     project = p;
@@ -102,6 +104,7 @@
       steps={project.patterns[project.current].steps}
       playhead={playing && pos.pattern === project.current ? pos.step : -1}
       onToggle={(t, s) => store.toggleStep(t, s, activeSlice)}
+      onEdit={(t, s) => (editing = { track: t, step: s })}
       onMute={(t) => store.toggleMute(t)}
       onSolo={(t) => store.toggleSolo(t)}
     />
@@ -127,6 +130,20 @@
     <MorePage {project} {engine} />
   {/if}
 </main>
+
+{#if editing}
+  {@const ed = editing}
+  <StepEditor
+    track={project.tracks[ed.track]}
+    stepIndex={ed.step}
+    step={project.patterns[project.current].steps[ed.track][ed.step]}
+    onPatch={(patch) => store.setStep(ed.track, ed.step, patch)}
+    onNotes={(notes) => store.setStepNotes(ed.track, ed.step, notes)}
+    onClear={() => store.resetStep(ed.track, ed.step)}
+    onPreview={(notes) => void engine.audition(ed.track, notes)}
+    onClose={() => (editing = null)}
+  />
+{/if}
 
 <Tabs {tab} onTab={(t) => (tab = t)} />
 

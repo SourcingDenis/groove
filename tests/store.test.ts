@@ -99,3 +99,69 @@ describe('Store: sound, sampler, song', () => {
     expect(s.get().song[0].repeats).toBe(1);
   });
 });
+
+import { noteName } from '../src/notes';
+
+describe('Store: step properties', () => {
+  it('sets step notes, switching the step on, and undoes in one go', () => {
+    const s = new Store();
+    s.setStepNotes(3, 1, [43]);
+    expect(s.get().patterns[0].steps[3][1]).toMatchObject({ on: true, notes: [43] });
+    s.undo();
+    expect(s.get().patterns[0].steps[3][1].on).toBe(false);
+  });
+
+  it('keeps chord notes sorted', () => {
+    const s = new Store();
+    s.setStepNotes(3, 1, [67, 60, 64]);
+    expect(s.get().patterns[0].steps[3][1].notes).toEqual([60, 64, 67]);
+  });
+
+  it('a switched-on step repeats the last notes you picked for that track', () => {
+    const s = new Store();
+    s.setStepNotes(3, 5, [41]);
+    s.toggleStep(3, 7);
+    expect(s.get().patterns[0].steps[3][7].notes).toEqual([41]);
+  });
+
+  it('falls back to the default bass note', () => {
+    const s = new Store();
+    s.toggleStep(3, 7);
+    expect(s.get().patterns[0].steps[3][7].notes).toEqual([36]);
+  });
+
+  it('merges a slider drag into one undo entry', () => {
+    const s = new Store();
+    s.toggleStep(0, 1);
+    const before = s.get().patterns[0].steps[0][1].vel;
+    for (const v of [0.8, 0.7, 0.6, 0.5]) s.setStep(0, 1, { vel: v });
+    expect(s.get().patterns[0].steps[0][1].vel).toBe(0.5);
+    s.undo(); // the whole drag
+    expect(s.get().patterns[0].steps[0][1].vel).toBe(before);
+    expect(s.get().patterns[0].steps[0][1].on).toBe(true); // the toggle is still its own entry
+  });
+
+  it('does not merge edits of different properties', () => {
+    const s = new Store();
+    s.setStep(0, 2, { vel: 0.5 });
+    s.setStep(0, 2, { prob: 0.5 });
+    s.undo();
+    expect(s.get().patterns[0].steps[0][2].prob).toBe(1);
+    expect(s.get().patterns[0].steps[0][2].vel).toBe(0.5);
+  });
+
+  it('resets a step completely', () => {
+    const s = new Store();
+    s.setStep(0, 0, { prob: 0.3, ratchet: 4 });
+    s.resetStep(0, 0);
+    expect(s.get().patterns[0].steps[0][0]).toEqual({ on: false, notes: [], vel: 0.9, prob: 1, ratchet: 1, nudge: 0 });
+  });
+});
+
+describe('noteName', () => {
+  it('names MIDI notes', () => {
+    expect(noteName(60)).toBe('C4');
+    expect(noteName(36)).toBe('C2');
+    expect(noteName(70)).toBe('A#4');
+  });
+});

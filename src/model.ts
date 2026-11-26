@@ -2,10 +2,16 @@ export type TrackKind = 'kick' | 'snare' | 'hat' | 'bass' | 'sampler';
 
 export interface Step {
   on: boolean;
-  /** MIDI note numbers for bass; slice index (0-based) for the sampler; ignored by drums. */
+  /** MIDI note numbers for melodic tracks; slice index (0-based) for the sampler; ignored by drums. */
   notes: number[];
   /** 0..1 */
   vel: number;
+  /** 0..1 chance the step plays */
+  prob: number;
+  /** 1..4 evenly spaced hits inside the step */
+  ratchet: number;
+  /** -0.5..0.5 of a step: negative rushes, positive drags */
+  nudge: number;
 }
 
 /** Macro knobs shown on the Sound page. Which ones apply depends on the track kind (see MACROS). */
@@ -58,10 +64,16 @@ export interface Project {
   songMode: boolean;
 }
 
-export const PROJECT_VERSION = 2;
+export const PROJECT_VERSION = 3;
 export const PATTERN_COUNT = 16;
 export const STEPS = 16;
 export const BASS_DEFAULT_NOTE = 36; // C2
+
+/** Tracks that take several notes per step (the editor toggles notes instead of replacing). */
+const POLY_KINDS: readonly string[] = ['chord', 'bell'];
+export const isPoly = (kind: TrackKind) => POLY_KINDS.includes(kind);
+
+export const DEFAULT_NOTES: Partial<Record<TrackKind, number[]>> = { bass: [BASS_DEFAULT_NOTE] };
 export const SLICE_OPTIONS = [1, 4, 8, 16];
 
 export interface Macro {
@@ -91,7 +103,9 @@ const PATTERN_NAMES = [
 
 export const defaultParams = (): SoundParams => ({ tune: 0, decay: 0.5, tone: 1 });
 
-export const emptyStep = (): Step => ({ on: false, notes: [], vel: 0.9 });
+export const emptyStep = (): Step => ({ on: false, notes: [], vel: 0.9, prob: 1, ratchet: 1, nudge: 0 });
+
+export const hit = (notes: number[] = [], vel = 0.9): Step => ({ ...emptyStep(), on: true, notes, vel });
 
 export function emptyPattern(name: string, trackCount: number, length = STEPS): Pattern {
   return {
@@ -119,9 +133,9 @@ export function defaultProject(): Project {
   const patterns = PATTERN_NAMES.map((n) => emptyPattern(n, tracks.length));
   // seed the first pattern with a basic beat so Play makes sound immediately
   const p = patterns[0];
-  for (const i of [0, 4, 8, 12]) p.steps[0][i] = { on: true, notes: [], vel: 1 };
-  for (const i of [4, 12]) p.steps[1][i] = { on: true, notes: [], vel: 0.9 };
-  for (let i = 0; i < STEPS; i += 2) p.steps[2][i] = { on: true, notes: [], vel: i % 4 === 2 ? 0.8 : 0.5 };
-  for (const i of [0, 6, 10]) p.steps[3][i] = { on: true, notes: [BASS_DEFAULT_NOTE], vel: 0.9 };
+  for (const i of [0, 4, 8, 12]) p.steps[0][i] = hit([], 1);
+  for (const i of [4, 12]) p.steps[1][i] = hit([], 0.9);
+  for (let i = 0; i < STEPS; i += 2) p.steps[2][i] = hit([], i % 4 === 2 ? 0.8 : 0.5);
+  for (const i of [0, 6, 10]) p.steps[3][i] = hit([BASS_DEFAULT_NOTE], 0.9);
   return { version: PROJECT_VERSION, bpm: 123, swing: 0, tracks, patterns, current: 0, song: [], songMode: false };
 }

@@ -73,3 +73,50 @@ describe('songSteps', () => {
     expect(songSteps(p)).toBe(16 * 2 + 16 * 3);
   });
 });
+
+import { expandHits, RATCHET_DECAY, type Trigger } from '../src/engine/sequencer';
+
+const trig = (over: Partial<Trigger> = {}): Trigger => ({ track: 0, notes: [36], vel: 1, prob: 1, ratchet: 1, nudge: 0, ...over });
+const STEP = 0.125;
+
+describe('expandHits', () => {
+  it('plays one hit on the step by default', () => {
+    expect(expandHits(trig(), STEP, () => 0.99)).toEqual([{ offset: 0, vel: 1, notes: [36] }]);
+  });
+
+  it('prob 1 always plays, prob 0 never does', () => {
+    expect(expandHits(trig({ prob: 1 }), STEP, () => 0.999999)).toHaveLength(1);
+    expect(expandHits(trig({ prob: 0 }), STEP, () => 0)).toHaveLength(0);
+  });
+
+  it('plays when the roll is under prob and skips when it is over', () => {
+    expect(expandHits(trig({ prob: 0.5 }), STEP, () => 0.49)).toHaveLength(1);
+    expect(expandHits(trig({ prob: 0.5 }), STEP, () => 0.5)).toHaveLength(0);
+  });
+
+  it('splits the step evenly for a ratchet and softens each hit', () => {
+    const hits = expandHits(trig({ ratchet: 4 }), STEP, () => 0);
+    expect(hits.map((h) => h.offset)).toEqual([0, STEP / 4, (2 * STEP) / 4, (3 * STEP) / 4]);
+    expect(hits[1].vel).toBeCloseTo(RATCHET_DECAY);
+    expect(hits[3].vel).toBeCloseTo(RATCHET_DECAY ** 3);
+  });
+
+  it('shifts every hit by the nudge, forwards or backwards', () => {
+    expect(expandHits(trig({ nudge: 0.5 }), STEP, () => 0)[0].offset).toBeCloseTo(STEP / 2);
+    expect(expandHits(trig({ nudge: -0.25, ratchet: 2 }), STEP, () => 0).map((h) => h.offset)).toEqual([-STEP / 4, STEP / 2 - STEP / 4]);
+  });
+
+  it('clamps out-of-range values', () => {
+    expect(expandHits(trig({ ratchet: 9 }), STEP, () => 0)).toHaveLength(4);
+    expect(expandHits(trig({ ratchet: 0 }), STEP, () => 0)).toHaveLength(1);
+    expect(expandHits(trig({ nudge: 5 }), STEP, () => 0)[0].offset).toBeCloseTo(STEP / 2);
+  });
+});
+
+describe('triggersAt carries step properties', () => {
+  it('passes prob / ratchet / nudge through', () => {
+    const p = defaultProject();
+    Object.assign(p.patterns[0].steps[0][0], { prob: 0.4, ratchet: 3, nudge: -0.1 });
+    expect(triggersAt(p, 0, 0).find((t) => t.track === 0)).toMatchObject({ prob: 0.4, ratchet: 3, nudge: -0.1 });
+  });
+});

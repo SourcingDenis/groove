@@ -4,7 +4,7 @@ import type { Store } from '../store/store';
 import { setupContext, unlock } from './context';
 import { createVoice, type Voice } from './instruments';
 import { getSample } from './samples';
-import { advanceSong, resolvePattern, triggersAt } from './sequencer';
+import { advanceSong, expandHits, resolvePattern, triggersAt } from './sequencer';
 
 export interface PlayPosition {
   step: number;
@@ -302,8 +302,12 @@ export class Engine {
       this.repeatCount++;
     }
 
+    const stepSeconds = 60 / project.bpm / 4;
+    const floor = this.transport.context.currentTime + 0.002; // a rushed hit can't land in the past
     for (const trig of triggersAt(project, pattern, heard)) {
-      this.voices[trig.track]?.trigger(time, trig.vel, trig.notes);
+      for (const h of expandHits(trig, stepSeconds)) {
+        this.voices[trig.track]?.trigger(Math.max(time + h.offset, floor), h.vel, h.notes);
+      }
     }
 
     if (!this.offline) {
