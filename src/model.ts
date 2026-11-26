@@ -42,6 +42,8 @@ export interface Track {
   /** 0..1 send levels: A = delay, B = reverb */
   sendA: number;
   sendB: number;
+  /** id of the built-in preset (see presets.ts) */
+  preset: string;
   params: SoundParams;
   arp: ArpMode;
   muted: boolean;
@@ -120,6 +122,11 @@ const PATTERN_NAMES = [
   'Break', 'Drop', 'Groove', 'Twist', 'Return', 'Peak', 'Fade', 'Close',
 ];
 
+/** First preset of each kind: what a new track starts with. */
+export const DEFAULT_PRESET: Record<TrackKind, string> = {
+  kick: '909', snare: '909', hat: '909', bass: 'saw', lead: 'square', chord: 'pad', bell: 'bell', sampler: 'default',
+};
+
 export const defaultParams = (): SoundParams => ({ tune: 0, decay: 0.5, tone: 1 });
 
 export const emptyStep = (): Step => ({ on: false, notes: [], vel: 0.9, prob: 1, ratchet: 1, nudge: 0 });
@@ -136,7 +143,7 @@ export function emptyPattern(name: string, trackCount: number, length = STEPS): 
 
 function track(name: string, kind: TrackKind, vol: number, sendA = 0, sendB = 0): Track {
   return {
-    name, kind, vol, pan: 0, sendA, sendB, params: defaultParams(), arp: 'off', muted: false, solo: false,
+    name, kind, vol, pan: 0, sendA, sendB, preset: DEFAULT_PRESET[kind], params: defaultParams(), arp: 'off', muted: false, solo: false,
     sample: null, sampleName: '', slices: 8,
   };
 }

@@ -1,5 +1,6 @@
 import * as Tone from 'tone';
 import { defaultParams, type SoundParams, type TrackKind } from '../model';
+import { getPreset, type BassCfg, type BellCfg, type ChordCfg, type KickCfg, type LeadCfg, type NoiseCfg } from '../presets';
 
 export interface Voice {
   node: Tone.ToneAudioNode;
@@ -117,103 +118,122 @@ function sampler(source: SamplerSource): Voice {
   };
 }
 
-export function createVoice(kind: TrackKind, source: SamplerSource): Voice {
-  switch (kind) {
-    case 'kick':
-      return pooled(() => {
-        const s = new Tone.MembraneSynth({ pitchDecay: 0.05, octaves: 6, envelope: { attack: 0.001, decay: 0.3, sustain: 0, release: 0.1 } });
-        let tune = 0;
-        return {
-          node: s,
-          trigger: (t, v) => s.triggerAttackRelease(hz(24 + tune), '16n', t, v),
-          setParams: (p) => { tune = p.tune; s.envelope.decay = 0.3 * decayFactor(p.decay); },
-          dispose: () => s.dispose(),
-        };
-      }, 6);
+function kick(c: KickCfg): Voice {
+  return pooled(() => {
+    const s = new Tone.MembraneSynth({
+      pitchDecay: c.pitchDecay,
+      octaves: c.octaves,
+      oscillator: { type: c.wave },
+      envelope: { attack: 0.001, decay: c.decay, sustain: 0, release: 0.1 },
+    });
+    let tune = 0;
+    let gate = Math.min(0.5, c.decay);
+    return {
+      node: s,
+      trigger: (t, v) => s.triggerAttackRelease(hz(c.base + tune), gate, t, v),
+      setParams: (p) => {
+        tune = p.tune;
+        const d = c.decay * decayFactor(p.decay);
+        s.envelope.decay = d;
+        gate = Math.min(0.5, d); // a long 808 tail is cut at half a second so voices can recycle
+      },
+      dispose: () => s.dispose(),
+    };
+  }, 8);
+}
+
+function noise(c: NoiseCfg): Voice {
+  return pooled(() => {
+    const n = new Tone.NoiseSynth({ noise: { type: c.noise }, envelope: { attack: 0.001, decay: c.decay, sustain: 0, release: c.kind === 'hat' ? 0.02 : 0.08 } });
+    const hp = new Tone.Filter(c.hp, 'highpass');
+    n.connect(hp);
+    return {
+      node: hp,
+      trigger: (t, v) => n.triggerAttackRelease(c.kind === 'hat' ? '32n' : '16n', t, v),
+      setParams: (p) => { n.envelope.decay = c.decay * decayFactor(p.decay); },
+      dispose: () => { n.dispose(); hp.dispose(); },
+    };
+  }, 6);
+}
+
+function bass(c: BassCfg): Voice {
+  return pooled(() => {
+    const s = new Tone.MonoSynth({
+      oscillator: (c.osc === 'fatsawtooth' ? { type: c.osc, spread: 35, count: 3 } : { type: c.osc }) as never,
+      filter: { Q: c.Q, type: 'lowpass', rolloff: -24 },
+      envelope: { attack: 0.005, decay: c.decay, sustain: c.sustain, release: c.release },
+      filterEnvelope: { attack: 0.005, decay: c.decay, sustain: 0.1, release: c.release, baseFrequency: c.base, octaves: c.octaves },
+    });
+    let tune = 0;
+    return {
+      node: s,
+      trigger: (t, v, notes) => s.triggerAttackRelease(hz((notes[0] ?? 36) + tune), '16n', t, v),
+      setParams: (p) => { tune = p.tune; s.envelope.decay = c.decay * decayFactor(p.decay); },
+      dispose: () => s.dispose(),
+    };
+  }, 3);
+}
+
+function lead(c: LeadCfg): Voice {
+  return pooled(() => {
+    const s = new Tone.MonoSynth({
+      oscillator: { type: c.osc },
+      portamento: c.portamento,
+      filter: { Q: c.Q, type: 'lowpass', rolloff: -12 },
+      envelope: { attack: 0.01, decay: 0.15, sustain: c.sustain, release: c.release },
+      filterEnvelope: { attack: 0.01, decay: 0.2, sustain: 0.3, release: c.release, baseFrequency: c.base, octaves: c.octaves },
+    });
+    let tune = 0;
+    return {
+      node: s,
+      trigger: (t, v, notes) => s.triggerAttackRelease(hz((notes[0] ?? 60) + tune), '16n', t, v),
+      setParams: (p) => { tune = p.tune; s.envelope.decay = 0.15 * decayFactor(p.decay); },
+      dispose: () => s.dispose(),
+    };
+  }, 3);
+}
+
+function chord(c: ChordCfg): Voice {
+  return poly(
+    () => {
+      const s = new Tone.PolySynth(Tone.Synth, {
+        oscillator: (c.osc === 'fatsawtooth' ? { type: c.osc, spread: 25, count: 3 } : { type: c.osc }) as never,
+        envelope: { attack: c.attack, decay: c.decay, sustain: c.sustain, release: c.release },
+      });
+      s.volume.value = c.level; // three or four saws add up fast
+      return s;
+    },
+    (s, p) => s.set({ envelope: { decay: c.decay * decayFactor(p.decay), release: c.release * decayFactor(p.decay) } }),
+    '8n',
+  );
+}
+
+function bell(c: BellCfg): Voice {
+  return poly(
+    () =>
+      new Tone.PolySynth(Tone.FMSynth, {
+        harmonicity: c.harmonicity,
+        modulationIndex: c.modulationIndex,
+        oscillator: { type: 'sine' },
+        envelope: { attack: 0.002, decay: c.decay, sustain: 0, release: c.release },
+        modulation: { type: c.modulation },
+        modulationEnvelope: { attack: 0.002, decay: 0.2, sustain: 0, release: 0.2 },
+      }),
+    (s, p) => s.set({ envelope: { decay: c.decay * decayFactor(p.decay), release: c.release * decayFactor(p.decay) } }),
+    '16n',
+  );
+}
+
+export function createVoice(kind: TrackKind, presetId: string, source: SamplerSource): Voice {
+  const cfg = getPreset(kind, presetId).config;
+  switch (cfg.kind) {
+    case 'kick': return kick(cfg);
     case 'snare':
-      return pooled(() => {
-        const s = new Tone.NoiseSynth({ noise: { type: 'white' }, envelope: { attack: 0.001, decay: 0.14, sustain: 0, release: 0.08 } });
-        return {
-          node: s,
-          trigger: (t, v) => s.triggerAttackRelease('16n', t, v),
-          setParams: (p) => { s.envelope.decay = 0.14 * decayFactor(p.decay); },
-          dispose: () => s.dispose(),
-        };
-      }, 6);
-    case 'hat':
-      // Filtered noise instead of MetalSynth: MetalSynth throws on rapid retriggers above ~200 BPM.
-      return pooled(() => {
-        const n = new Tone.NoiseSynth({ noise: { type: 'white' }, envelope: { attack: 0.001, decay: 0.05, sustain: 0, release: 0.02 } });
-        const hp = new Tone.Filter(7500, 'highpass');
-        n.connect(hp);
-        return {
-          node: hp,
-          trigger: (t, v) => n.triggerAttackRelease('32n', t, v),
-          setParams: (p) => { n.envelope.decay = 0.05 * decayFactor(p.decay); },
-          dispose: () => { n.dispose(); hp.dispose(); },
-        };
-      }, 6);
-    case 'bass':
-      return pooled(() => {
-        const s = new Tone.MonoSynth({
-          oscillator: { type: 'sawtooth' },
-          filter: { Q: 2, type: 'lowpass', rolloff: -24 },
-          envelope: { attack: 0.005, decay: 0.2, sustain: 0.35, release: 0.15 },
-          filterEnvelope: { attack: 0.005, decay: 0.2, sustain: 0.1, release: 0.15, baseFrequency: 120, octaves: 3 },
-        });
-        let tune = 0;
-        return {
-          node: s,
-          trigger: (t, v, notes) => s.triggerAttackRelease(hz((notes[0] ?? 36) + tune), '16n', t, v),
-          setParams: (p) => { tune = p.tune; s.envelope.decay = 0.2 * decayFactor(p.decay); },
-          dispose: () => s.dispose(),
-        };
-      }, 3);
-    case 'lead':
-      return pooled(() => {
-        const s = new Tone.MonoSynth({
-          oscillator: { type: 'square' },
-          portamento: 0.02,
-          filter: { Q: 3, type: 'lowpass', rolloff: -12 },
-          envelope: { attack: 0.01, decay: 0.15, sustain: 0.5, release: 0.2 },
-          filterEnvelope: { attack: 0.01, decay: 0.2, sustain: 0.3, release: 0.2, baseFrequency: 500, octaves: 3 },
-        });
-        let tune = 0;
-        return {
-          node: s,
-          trigger: (t, v, notes) => s.triggerAttackRelease(hz((notes[0] ?? 60) + tune), '16n', t, v),
-          setParams: (p) => { tune = p.tune; s.envelope.decay = 0.15 * decayFactor(p.decay); },
-          dispose: () => s.dispose(),
-        };
-      }, 3);
-    case 'chord':
-      return poly(
-        () => {
-          const s = new Tone.PolySynth(Tone.Synth, {
-            oscillator: { type: 'sawtooth' },
-            envelope: { attack: 0.02, decay: 0.3, sustain: 0.4, release: 0.5 },
-          });
-          s.volume.value = -8; // three or four saws add up fast
-          return s;
-        },
-        (s, p) => s.set({ envelope: { decay: 0.3 * decayFactor(p.decay), release: 0.5 * decayFactor(p.decay) } }),
-        '8n',
-      );
-    case 'bell':
-      return poly(
-        () =>
-          new Tone.PolySynth(Tone.FMSynth, {
-            harmonicity: 3.01,
-            modulationIndex: 14,
-            oscillator: { type: 'sine' },
-            envelope: { attack: 0.002, decay: 0.8, sustain: 0, release: 1.2 },
-            modulation: { type: 'square' },
-            modulationEnvelope: { attack: 0.002, decay: 0.2, sustain: 0, release: 0.2 },
-          }),
-        (s, p) => s.set({ envelope: { decay: 0.8 * decayFactor(p.decay), release: 1.2 * decayFactor(p.decay) } }),
-        '16n',
-      );
-    case 'sampler':
-      return sampler(source);
+    case 'hat': return noise(cfg);
+    case 'bass': return bass(cfg);
+    case 'lead': return lead(cfg);
+    case 'chord': return chord(cfg);
+    case 'bell': return bell(cfg);
+    case 'sampler': return sampler(source);
   }
 }

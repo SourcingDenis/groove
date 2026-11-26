@@ -1,3 +1,4 @@
+import { getPreset, KITS, presetParams, type UserPreset } from '../presets';
 import { type ArpMode, DEFAULT_NOTES, defaultProject, emptyPattern, emptyStep, type Project, type SoundParams, type Step } from '../model';
 
 type Listener = (p: Project) => void;
@@ -165,6 +166,40 @@ export class Store {
 
   setMix(track: number, key: 'vol' | 'pan' | 'sendA' | 'sendB', value: number) {
     this.edit((p) => { p.tracks[track][key] = value; }, false);
+  }
+
+  /** Switch a track to a built-in preset; its macros reset to the preset's starting values. */
+  setPreset(track: number, presetId: string) {
+    this.edit((p) => {
+      const t = p.tracks[track];
+      const preset = getPreset(t.kind, presetId);
+      t.preset = preset.id;
+      t.params = presetParams(preset);
+    });
+  }
+
+  /** Swap kick, snare and hat to the same kit (808 / 909 / lofi) in one undo step. */
+  applyKit(kitId: string) {
+    if (!KITS.some((k) => k.id === kitId)) return;
+    this.edit((p) => {
+      for (const t of p.tracks) {
+        if (t.kind !== 'kick' && t.kind !== 'snare' && t.kind !== 'hat') continue;
+        const preset = getPreset(t.kind, kitId);
+        t.preset = preset.id;
+        t.params = presetParams(preset);
+      }
+    });
+  }
+
+  /** Apply a saved sound to a track of the same kind. */
+  applySound(track: number, sound: Pick<UserPreset, 'kind' | 'preset' | 'params' | 'arp'>) {
+    if (this.project.tracks[track].kind !== sound.kind) return;
+    this.edit((p) => {
+      const t = p.tracks[track];
+      t.preset = getPreset(t.kind, sound.preset).id;
+      t.params = { ...sound.params };
+      t.arp = sound.arp as ArpMode;
+    });
   }
 
   setArp(track: number, mode: ArpMode) {

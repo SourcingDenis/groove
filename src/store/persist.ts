@@ -1,13 +1,15 @@
 import { openDB } from 'idb';
 import { PROJECT_VERSION, type Project } from '../model';
+import type { UserPreset } from '../presets';
 
 const KEY = 'project';
 
 const db = () =>
-  openDB('groove', 2, {
+  openDB('groove', 3, {
     upgrade(d) {
       if (!d.objectStoreNames.contains('kv')) d.createObjectStore('kv');
       if (!d.objectStoreNames.contains('samples')) d.createObjectStore('samples');
+      if (!d.objectStoreNames.contains('presets')) d.createObjectStore('presets');
     },
   });
 
@@ -42,6 +44,31 @@ export async function loadSample(id: string): Promise<Blob | null> {
     return ((await (await db()).get('samples', id)) as Blob | undefined) ?? null;
   } catch {
     return null;
+  }
+}
+
+export async function listUserPresets(): Promise<UserPreset[]> {
+  try {
+    const all = (await (await db()).getAll('presets')) as UserPreset[];
+    return all.sort((a, b) => a.name.localeCompare(b.name));
+  } catch {
+    return [];
+  }
+}
+
+export async function saveUserPreset(p: UserPreset): Promise<void> {
+  try {
+    await (await db()).put('presets', p, p.id);
+  } catch {
+    /* ignore */
+  }
+}
+
+export async function deleteUserPreset(id: string): Promise<void> {
+  try {
+    await (await db()).delete('presets', id);
+  } catch {
+    /* ignore */
   }
 }
 

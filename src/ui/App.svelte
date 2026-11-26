@@ -3,7 +3,9 @@
   import { Engine } from '../engine/engine';
   import { registerSample } from '../engine/samples';
   import { Store } from '../store/store';
-  import { autosave, loadProject, loadSample } from '../store/persist';
+  import { newId } from '../engine/samples';
+  import { autosave, deleteUserPreset, listUserPresets, loadProject, loadSample, saveUserPreset } from '../store/persist';
+  import type { UserPreset } from '../presets';
   import LivePage from './LivePage.svelte';
   import MixerPage from './MixerPage.svelte';
   import MorePage from './MorePage.svelte';
@@ -29,6 +31,7 @@
   let soundTrack = $state(0);
   let activeSlice = $state(0);
   let sampleVersion = $state(0);
+  let userPresets = $state<UserPreset[]>([]);
   let editing = $state<{ track: number; step: number } | null>(null);
 
   store.subscribe((p) => {
@@ -42,6 +45,7 @@
   };
 
   onMount(() => {
+    void listUserPresets().then((l) => (userPresets = l));
     void (async () => {
       const saved = await loadProject();
       if (!saved) return;
@@ -65,6 +69,17 @@
       await engine.play();
       playing = true;
     }
+  }
+
+  async function saveUser(name: string) {
+    const t = project.tracks[soundTrack];
+    await saveUserPreset({ id: newId(), kind: t.kind, name, preset: t.preset, params: { ...t.params }, arp: t.arp });
+    userPresets = await listUserPresets();
+  }
+
+  async function deleteUser(id: string) {
+    await deleteUserPreset(id);
+    userPresets = await listUserPresets();
   }
 
   function pickPattern(i: number) {
@@ -119,6 +134,9 @@
       {sampleVersion}
       onSlice={(n) => (activeSlice = n)}
       onLoaded={() => sampleVersion++}
+      {userPresets}
+      onSaveUser={saveUser}
+      onDeleteUser={deleteUser}
     />
   {:else if tab === 'mixer'}
     <MixerPage {project} {store} {engine} />

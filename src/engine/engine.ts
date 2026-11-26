@@ -28,6 +28,9 @@ const REVERB_BRIGHT = 18000;
 export class Engine {
   private voices: Voice[] = [];
   private channels: Tone.Channel[] = [];
+  /** per-track entry gain: voices feed this, it feeds the channel (sidechain ducking automates it) */
+  private inputs: Tone.Gain[] = [];
+  private voicePreset: string[] = [];
   private meters: Tone.Meter[] = [];
   private sendA: Tone.Gain[] = [];
   private sendB: Tone.Gain[] = [];
@@ -55,6 +58,9 @@ export class Engine {
   private repeatLen: number | null = null;
   private repeatAnchor = -1;
   private repeatCount = 0;
+
+  /** hits dropped because a voice threw on retrigger (should stay 0) */
+  droppedHits = 0;
 
   onPosition: (pos: PlayPosition) => void = () => {};
 
@@ -216,18 +222,16 @@ export class Engine {
       this.perfFilter, this.perfDelaySend, this.perfRevSend, this.analyser);
     if (this.recorder) this.nodes.push(this.recorder);
 
-    this.voices = p.tracks.map((t, i) =>
-      createVoice(t.kind, () => {
-        const tr = this.store.get().tracks[i];
-        return { buffer: getSample(tr.sample), slices: tr.slices };
-      }),
-    );
+    this.voices = p.tracks.map((t, i) => this.makeVoice(i, t.kind, t.preset));
+    this.voicePreset = p.tracks.map((t) => t.preset);
     this.voices.forEach((v) => {
       const ch = new Tone.Channel({ volume: 0 }).connect(dry);
+      const input = new Tone.Gain(1).connect(ch);
       const a = new Tone.Gain(0).connect(this.delay);
       const b = new Tone.Gain(0).connect(this.reverb);
       const meter = new Tone.Meter({ smoothing: 0.8 });
-      v.node.connect(ch);
+      v.node.connect(input);
+      this.inputs.push(input);
       ch.connect(a);
       ch.connect(b);
       ch.connect(meter);
@@ -241,11 +245,32 @@ export class Engine {
     this.sync(p);
   }
 
+  private makeVoice(i: number, kind: Project['tracks'][number]['kind'], preset: string): Voice {
+    return createVoice(kind, preset, () => {
+      const tr = this.store.get().tracks[i];
+      return { buffer: getSample(tr.sample), slices: tr.slices };
+    });
+  }
+
+  /** Replace one track's instrument without touching the rest of the graph or the transport. */
+  private swapVoice(i: number, p: Project) {
+    const track = p.tracks[i];
+    const old = this.voices[i];
+    const voice = this.makeVoice(i, track.kind, track.preset);
+    voice.node.connect(this.inputs[i]);
+    voice.setParams(track.params);
+    this.voices[i] = voice;
+    this.voicePreset[i] = track.preset;
+    // let the old voice's tail ring out before freeing it
+    setTimeout(() => old.dispose(), 1500);
+  }
+
   private teardown() {
     this.voices.forEach((v) => v.dispose());
-    [...this.channels, ...this.sendA, ...this.sendB, ...this.meters, ...this.nodes].forEach((n) => n.dispose());
+    [...this.channels, ...this.inputs, ...this.sendA, ...this.sendB, ...this.meters, ...this.nodes].forEach((n) => n.dispose());
     this.voices = [];
     this.channels = [];
+    this.inputs = [];
     this.sendA = [];
     this.sendB = [];
     this.meters = [];
@@ -259,6 +284,7 @@ export class Engine {
     this.transport.swingSubdivision = '16n';
     p.tracks.forEach((track, i) => {
       if (!this.channels[i]) return;
+      if (this.voicePreset[i] !== track.preset) this.swapVoice(i, p);
       this.channels[i].volume.value = track.vol;
       this.channels[i].pan.value = track.pan;
       this.sendA[i].gain.value = track.sendA;
@@ -307,7 +333,13 @@ export class Engine {
     for (const trig of triggersAt(project, pattern, heard)) {
       const arp = { mode: project.tracks[trig.track].arp, stepIndex: heard };
       for (const h of expandHits(trig, stepSeconds, Math.random, arp)) {
-        this.voices[trig.track]?.trigger(Math.max(time + h.offset, floor), h.vel, h.notes);
+        try {
+          this.voices[trig.track]?.trigger(Math.max(time + h.offset, floor), h.vel, h.notes);
+        } catch (e) {
+          // a voice refusing a retrigger must not take the whole transport down
+          this.droppedHits++;
+          console.warn('dropped hit', e);
+        }
       }
     }
 
